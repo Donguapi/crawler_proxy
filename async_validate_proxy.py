@@ -166,13 +166,8 @@ async def main():
         coros.cancel()
 
 
-async def t():
-    await init_db()
-    print(await ProxyModel.get_or_none(ip="119.133.196.102"))
-
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("press ctrl+c")
-    # asyncio.run(t())
