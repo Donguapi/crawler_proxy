@@ -1,7 +1,10 @@
 from collections import namedtuple
 
-MAX_SCORE = 100
+MAX_SCORE = 30
 TIMEOUT = 5
+
+POOL_MAX = 30
+WORKS = 15
 
 Mysql = namedtuple("Mysql", "database host port username password")
 
@@ -13,4 +16,6 @@ mysql = Mysql(
     username="root",
     password="mysql"
 )
+
+
 

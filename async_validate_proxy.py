@@ -3,10 +3,11 @@ import time
 
 import requests
 import asyncio
+
 import settings
+import utils
 from proxy_ip import Proxy
-from free_proxy_crawl import XiciProxy
-from basespider import BaseSpider
+from free_proxy_crawl import XiciProxy, Ip3366Spider, IphaiSpider
 from concurrent.futures import ThreadPoolExecutor
 from models import ProxyModel, init_db
 import logging
@@ -21,14 +22,14 @@ def fetch(proxy, ishttp=True):
         'http': f"http://{proxy.ip}:{proxy.port}",
         'https': f"https://{proxy.ip}:{proxy.port}"
     }
-    headers = BaseSpider.get_request_header()
+    # headers = utils.get_request_header()
     if ishttp:
         url = 'http://httpbin.org/get'
     else:
         url = 'https://httpbin.org/get'
     try:
         start = time.time()
-        r = requests.get(url=url, headers=BaseSpider.get_request_header(), timeout=settings.TIMEOUT, proxies=proxies)
+        r = requests.get(url=url, headers=utils.get_request_header(), timeout=settings.TIMEOUT, proxies=proxies)
         if r.ok:
             # 计算响应速度, 保留两位小数
             speed = round(time.time() - start, 2)
@@ -59,14 +60,25 @@ def fetch(proxy, ishttp=True):
 
 async def save_proxy(proxy):
     try:
-        await ProxyModel.create(
-            ip=proxy.ip,
-            port=proxy.port,
-            area=proxy.area,
-            speed=proxy.speed,
-            anonymity=proxy.nick_type,
-            protocol=proxy.protocol
-        )
+        if await ProxyModel.get_or_none(ip=proxy.ip) == None:
+            await ProxyModel.create(
+                ip=proxy.ip,
+                port=proxy.port,
+                area=proxy.area,
+                speed=proxy.speed,
+                anonymity=proxy.nick_type,
+                protocol=proxy.protocol,
+                score=proxy.score
+            )
+        else:
+            logging.warning(f"{proxy.ip}:{proxy.area} 已经存在！")
+    except Exception as e:
+        print(e)
+
+
+async def proxy_count():
+    try:
+        return await ProxyModel.all().count()
     except Exception as e:
         print(e)
 
@@ -75,7 +87,6 @@ async def validate(name, q, pool, event):
     loop = asyncio.get_running_loop()
     while not event.is_set() or not q.empty():
         proxy = await q.get()
-        logging.info(f"{name}--{proxy.ip}")
         http, http_nick_type, http_speed = await loop.run_in_executor(pool, fetch, proxy)
         https, https_nick_type, https_speed = await loop.run_in_executor(pool, fetch, proxy, False)
 
@@ -84,45 +95,66 @@ async def validate(name, q, pool, event):
             proxy.protocol = 2
             proxy.nick_type = http_nick_type
             proxy.speed = http_speed
+            if isinstance(proxy, ProxyModel):
+                await proxy.save()
+
         elif http:
             # 如果只有http可以请求成功, 说明支持http协议, 协议类型为 0
             proxy.protocol = 0
             proxy.nick_type = http_nick_type
             proxy.speed = http_speed
+            if isinstance(proxy, ProxyModel):
+                await proxy.save()
+
         elif https:
             # # 如果只有https可以请求成功, 说明支持https协议, 协议类型为 1
             proxy.protocol = 1
             proxy.nick_type = https_nick_type
             proxy.speed = https_speed
+            if isinstance(proxy, ProxyModel):
+                await proxy.save()
         else:
+            if isinstance(proxy, ProxyModel):
+                if proxy.score <= 0:
+                    await proxy.delete()
+                else:
+                    await proxy.update_from_dict({"score": proxy.score - 1})
             proxy.protocol = -1
             proxy.nick_type = -1
             proxy.speed = -1
 
-        if proxy.speed > 0:
+        if not isinstance(proxy, ProxyModel) and proxy.speed > 0:
             await save_proxy(proxy)
+
         q.task_done()
 
 
-async def productor(q, xc):
-    for info in xc.get_results():
-        print(info)
-        if info[0] != '':
-            proxy = Proxy(info[0], int(info[1]), area=info[2])
+async def get_proxy(q, xc):
+    if not isinstance(xc, list):
+        for info in xc.get_results():
+            print(info)
+            if info[0] != '':
+                proxy = Proxy(info[0], int(info[1]), area=info[2] if info[2] != '' else "未知")
+                await q.put(proxy)
+    else:
+        for proxy in xc:
             await q.put(proxy)
 
 
 async def main():
     await init_db()
-    shutdowm_event = asyncio.Event()
-    pool = ThreadPoolExecutor(30)
+    shutdown_event = asyncio.Event()
+    pool = ThreadPoolExecutor(settings.POOL_MAX)
     q = asyncio.Queue()
-    #  西刺代理
-    xc = XiciProxy()
-    product = productor(q, xc)
-    works = [validate(f"worker_{i}", q, pool, shutdowm_event) for i in range(20)]
+    if await proxy_count():
+        obj = await ProxyModel.all()
+        product = [get_proxy(q, obj)]
+    else:
+        obj_li = [XiciProxy(), Ip3366Spider(), IphaiSpider()]
+        product = [get_proxy(q, obj) for obj in obj_li]
+    works = [validate(f"worker_{i}", q, pool, shutdown_event) for i in range(settings.WORKS)]
     coros = asyncio.gather(
-        product,
+        *product,
         *works,
         return_exceptions=True
     )
@@ -130,12 +162,17 @@ async def main():
         await coros
 
     except KeyboardInterrupt:
-        shutdowm_event.set()
+        shutdown_event.set()
         coros.cancel()
 
+
+async def t():
+    await init_db()
+    print(await ProxyModel.get_or_none(ip="119.133.196.102"))
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("press ctrl+c")
+    # asyncio.run(t())

@@ -1,5 +1,3 @@
-import asyncio
-
 from tortoise import fields, Model, Tortoise
 from enum import IntEnum
 from settings import mysql
@@ -36,6 +34,7 @@ class ProxyModel(Model):
     speed = fields.FloatField()
     anonymity: Anonymity = fields.IntEnumField(Anonymity, default=Anonymity.unknown)
     protocol: Protocol = fields.IntEnumField(Protocol, default=Protocol.unknown)
+    score = fields.IntField()
 
     class Meta:
         table = "tb_proxy"
@@ -44,14 +43,4 @@ class ProxyModel(Model):
         return f"{self.id}--{self.ip}:{self.port} | {self.area}"
 
 
-async def test():
-    await init_db()
-    prs = await ProxyModel.filter(
-        speed__lte=4,
-        protocol__in=[Protocol.all, Protocol.https]
-    ).all()  # 拿到请求速度小于4 s ,和支持https 或http/https都支持的代理
-    for pr in prs:
-        print(pr)
 
-if __name__ == '__main__':
-    asyncio.run(test())
