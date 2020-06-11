@@ -66,7 +66,7 @@ async def save_proxy(proxy):
                 port=proxy.port,
                 area=proxy.area,
                 speed=proxy.speed,
-                anonymity=proxy.nick_type,
+                anonymity=proxy.anonymity,
                 protocol=proxy.protocol,
                 score=proxy.score
             )
@@ -93,34 +93,36 @@ async def validate(name, q, pool, event):
         if http and https:
             # 如果http 和 https 都可以请求成功, 说明支持http也支持https, 协议类型为2
             proxy.protocol = 2
-            proxy.nick_type = http_nick_type
+            proxy.anonymity = http_nick_type
             proxy.speed = http_speed
             if isinstance(proxy, ProxyModel):
-                await proxy.save()
+                await proxy.save(update_fields=["protocol", "anonymity", "speed"])
 
         elif http:
             # 如果只有http可以请求成功, 说明支持http协议, 协议类型为 0
             proxy.protocol = 0
-            proxy.nick_type = http_nick_type
+            proxy.anonymity = http_nick_type
             proxy.speed = http_speed
             if isinstance(proxy, ProxyModel):
-                await proxy.save()
+                await proxy.save(update_fields=["protocol", "anonymity", "speed"])
 
         elif https:
             # # 如果只有https可以请求成功, 说明支持https协议, 协议类型为 1
             proxy.protocol = 1
-            proxy.nick_type = https_nick_type
+            proxy.anonymity = https_nick_type
             proxy.speed = https_speed
             if isinstance(proxy, ProxyModel):
-                await proxy.save()
+                await proxy.save(update_fields=["protocol", "anonymity", "speed" ])
         else:
             if isinstance(proxy, ProxyModel):
                 if proxy.score <= 0:
                     await proxy.delete()
                 else:
-                    await proxy.update_from_dict({"score": proxy.score - 1})
+                    proxy.score -= 1
+                    proxy.speed = -1
+                    await proxy.save(update_fields=["score", "speed"])
             proxy.protocol = -1
-            proxy.nick_type = -1
+            proxy.anonymity = -1
             proxy.speed = -1
 
         if not isinstance(proxy, ProxyModel) and proxy.speed > 0:

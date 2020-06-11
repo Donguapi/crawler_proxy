@@ -4,7 +4,7 @@ MAX_SCORE = 30
 TIMEOUT = 5
 
 POOL_MAX = 30
-WORKS = 15
+WORKS = 20
 
 Mysql = namedtuple("Mysql", "database host port username password")
 
