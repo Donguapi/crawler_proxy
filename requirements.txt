@@ -1,5 +1,5 @@
 aiomysql==0.0.20
-lxml==4.5.1
+lxml==4.6.3
 requests==2.23.0
 tortoise-orm==0.16.13
 
